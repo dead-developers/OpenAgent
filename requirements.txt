@@ -1,3 +1,31 @@
+# OpenAgent Dual-Model Architecture Requirements
+# Core Dependencies
+requests>=2.28.0
+numpy>=1.22.0
+tomli>=2.0.1
+
+# API Rate Limiting
+ratelimit>=2.2.1
+
+# Database and Storage
+sqlalchemy>=1.4.0
+alembic>=1.8.0  # For database migrations
+
+# Vector Embeddings
+sentence-transformers>=2.2.2
+torch>=1.12.0
+
+# Testing
+pytest>=7.0.0
+pytest-mock>=3.8.0
+
+# Environment and Configuration
+python-dotenv>=0.20.0
+
+# Development Tools
+black>=22.3.0  # Code formatting
+mypy>=0.950  # Type checking
+
 pydantic~=2.10.6
 openai~=1.66.3
 tenacity~=9.0.0

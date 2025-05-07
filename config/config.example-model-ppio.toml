@@ -1,8 +1,8 @@
 # Global LLM configuration
-[llm] #PPIO:
-api_type = 'ppio'
-model = "deepseek/deepseek-v3-0324"                                # The LLM model to use
-base_url = "https://api.ppinfra.com/v3/openai"                     # API endpoint URL
+[llm] #Hugging Face:
+api_type = 'huggingface'
+model = "deepseek-ai/DeepSeek-V3"                                  # The LLM model to use
+base_url = "https://api-inference.huggingface.co/models"           # Hugging Face API endpoint URL
 api_key = "your ppio api key"                                      # Your API key
 max_tokens = 16000                                                 # Maximum number of tokens in the response
 temperature = 0.0                                                  # Controls randomness

@@ -1,0 +1,39 @@
+flowchart TD
+    A[User Task Input] --> B[DeepSeek V3: Task Breakdown]
+    B --> C{For Each Subtask}
+    C --> |First/Next Subtask| D[Parallel Processing]
+    
+    subgraph Parallel
+        D --> E[DeepSeek V3: Execute Task]
+        D --> F[DeepSeek R1: Predict Result]
+    end
+    
+    E --> G[Compare Results]
+    F --> G
+    G --> H{Differences Found?}
+    
+    H --> |No| N[Store Results with .No_rejections]
+    H --> |Yes| I[Models Propose Resolutions]
+    
+    I --> J{Models Agree?}
+    J --> |Yes| N
+    J --> |No| K[One Chance to Present Arguments]
+    
+    K --> L{One Model Concedes?}
+    L --> |Yes| N
+    L --> |No| M[Apply Hard Decision Criteria]
+    
+    M --> O{Both Solutions Pass?}
+    O --> |Yes| P[Choose Better Solution]
+    O --> |No| Q[Reject Both Solutions]
+    
+    P --> N
+    Q --> R[Store Failures]
+    R --> S{Restart Loop or Next Task}
+    S --> |Restart| C
+    S --> |Next Task| T[All Subtasks Complete?]
+    
+    N --> T
+    T --> |No| C
+    T --> |Yes| U[Synthesize Results]
+    U --> V[Final Result]
