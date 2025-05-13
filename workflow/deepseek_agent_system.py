@@ -254,7 +254,7 @@ class ModelRouter:
         else:
             raise Exception("All attempts to call primary model failed")
     
-@sleep_and_retry
+    @sleep_and_retry
     @limits(calls=40, period=60)  # More conservative rate limit for fallback
     def call_fallback_hf_model(self, prompt: str) -> str:
         """Call the HuggingFace fallback model (DeepSeek-R1) with robust error handling.

@@ -1,0 +1,112 @@
+# /home/ubuntu/OpenAgent/config/config.example.yaml
+# Example YAML configuration for OpenAgent, aligning with manus-task-specification.md
+
+llm:
+  default:
+    model: "deepseek-ai/DeepSeek-V3" # Default primary model
+    base_url: "YOUR_DEEPSEEK_API_BASE_URL" # Or Hugging Face endpoint if applicable
+    api_key: "YOUR_DEEPSEEK_API_KEY"
+    max_tokens: 4096
+    max_input_tokens: 16000 # Example, adjust as needed
+    temperature: 0.7
+    api_type: "openai" # Or "huggingface", "custom" depending on how DeepSeek is accessed
+    api_version: "v1" # If applicable
+
+  deepseek-v3:
+    model: "deepseek-ai/DeepSeek-V3"
+    base_url: "YOUR_DEEPSEEK_V3_API_BASE_URL"
+    api_key: "YOUR_DEEPSEEK_V3_API_KEY"
+    max_tokens: 4096
+    max_input_tokens: 32000 # V3 might handle larger contexts
+    temperature: 0.7
+    api_type: "openai"
+
+  deepseek-r1:
+    model: "deepseek-ai/DeepSeek-R1"
+    base_url: "YOUR_DEEPSEEK_R1_API_BASE_URL"
+    api_key: "YOUR_DEEPSEEK_R1_API_KEY"
+    max_tokens: 4096
+    max_input_tokens: 8000 # R1 might be for faster, less complex tasks
+    temperature: 0.8
+    api_type: "openai"
+
+  # Configuration for other models can be added here if needed
+  # ollama_example:
+  #   model: "llama3:latest"
+  #   base_url: "http://localhost:11434/v1"
+  #   api_key: "ollama" # or any string, not always used by Ollama
+  #   api_type: "openai" # Ollama provides an OpenAI compatible endpoint
+
+agent:
+  name: "OpenManusAgent"
+  max_steps: 50
+  dual_model_system:
+    primary_model_key: "deepseek-v3" # Key from llm section
+    secondary_model_key: "deepseek-r1" # Key from llm section
+    # Router settings can be implicit or explicitly defined if ModelRouter takes them
+
+supervision:
+  default_autonomy_level: "supervised" # "full", "supervised", "manual"
+  checkpoint_triggers:
+    - type: "low_confidence" # Example trigger
+      threshold: 0.6
+    - type: "max_steps_without_progress"
+      value: 5
+    - type: "critical_tool_use" # e.g., before executing a destructive command
+      tools: ["shell_exec_destructive_placeholder"]
+  intervention_timeout_seconds: 300 # How long to wait for user intervention
+
+knowledge_store:
+  embedding_model: "all-MiniLM-L6-v2" # SentenceTransformer model
+  vector_db_type: "faiss_IndexFlatL2" # FAISS index type
+  persist_path: "workspace/knowledge_store" # Relative to project root
+  # faiss_index_path: "workspace/knowledge_store/faiss_index.idx"
+  # metadata_path: "workspace/knowledge_store/metadata.json"
+
+web_interface:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8501 # Default Streamlit port
+  api_base_url: "http://localhost:8000" # URL of the FastAPI backend
+
+sandbox:
+  use_sandbox: true
+  image: "python:3.11-slim"
+  work_dir: "/workspace"
+  memory_limit: "1g"
+  cpu_limit: 1.5
+  timeout: 600 # seconds
+  network_enabled: true
+
+browser:
+  headless: true
+  disable_security: true
+  # extra_chromium_args: []
+  # chrome_instance_path: null
+  # wss_url: null
+  # cdp_url: null
+  # proxy:
+  #   server: null
+  #   username: null
+  #   password: null
+  max_content_length: 5000
+
+search:
+  engine: "Google"
+  fallback_engines: ["DuckDuckGo", "Bing"]
+  retry_delay: 60
+  max_retries: 3
+  lang: "en"
+  country: "us"
+
+mcp:
+  server_reference: "app.mcp.server"
+  # mcp.json is still used for server definitions as per existing config.py logic
+  # This section is more for general MCP settings if any were needed here.
+
+# Logging configuration (basic example)
+logging:
+  level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_path: "logs/openagent.log" # Optional: if logging to a file
+

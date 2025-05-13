@@ -1,8 +1,9 @@
 import json
 import threading
 import tomllib
+import yaml # Added for YAML support
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from pydantic import BaseModel, Field
 
@@ -89,15 +90,40 @@ class SandboxSettings(BaseModel):
     """Configuration for the execution sandbox"""
 
     use_sandbox: bool = Field(False, description="Whether to use the sandbox")
-    image: str = Field("python:3.12-slim", description="Base image")
+    image: str = Field("python:3.12-slim", description="Base image") # Specification used 3.11, existing was 3.12
     work_dir: str = Field("/workspace", description="Container working directory")
-    memory_limit: str = Field("512m", description="Memory limit")
-    cpu_limit: float = Field(1.0, description="CPU limit")
-    timeout: int = Field(300, description="Default command timeout (seconds)")
+    memory_limit: str = Field("1g", description="Memory limit") # Specification used 1g, existing was 512m
+    cpu_limit: float = Field(1.5, description="CPU limit") # Specification used 1.5, existing was 1.0
+    timeout: int = Field(600, description="Default command timeout (seconds)") # Specification used 600, existing was 300
     network_enabled: bool = Field(
-        False, description="Whether network access is allowed"
+        True, description="Whether network access is allowed" # Specification used true, existing was false
     )
 
+class KnowledgeStoreSettings(BaseModel):
+    embedding_model: str = Field("all-MiniLM-L6-v2")
+    vector_db_type: str = Field("faiss_IndexFlatL2")
+    persist_path: str = Field("workspace/knowledge_store")
+
+class WebInterfaceSettings(BaseModel):
+    enabled: bool = Field(True)
+    host: str = Field("0.0.0.0")
+    port: int = Field(8501)
+    api_base_url: str = Field("http://localhost:8000")
+
+class AgentSettings(BaseModel):
+    name: str = Field("OpenManusAgent")
+    max_steps: int = Field(50)
+    dual_model_system: Optional[Dict[str, str]] = Field(default_factory=lambda: {"primary_model_key": "deepseek-v3", "secondary_model_key": "deepseek-r1"})
+
+class SupervisionSettings(BaseModel):
+    default_autonomy_level: str = Field("supervised")
+    checkpoint_triggers: List[Dict[str, Any]] = Field(default_factory=list)
+    intervention_timeout_seconds: int = Field(300)
+
+class LoggingSettings(BaseModel):
+    level: str = Field("INFO")
+    format: str = Field("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_path: Optional[str] = None
 
 class MCPServerConfig(BaseModel):
     """Configuration for a single MCP server"""
@@ -148,16 +174,15 @@ class MCPSettings(BaseModel):
 
 class AppConfig(BaseModel):
     llm: Dict[str, LLMSettings]
-    sandbox: Optional[SandboxSettings] = Field(
-        None, description="Sandbox configuration"
-    )
-    browser_config: Optional[BrowserSettings] = Field(
-        None, description="Browser configuration"
-    )
-    search_config: Optional[SearchSettings] = Field(
-        None, description="Search configuration"
-    )
-    mcp_config: Optional[MCPSettings] = Field(None, description="MCP configuration")
+    agent: Optional[AgentSettings] = None
+    supervision: Optional[SupervisionSettings] = None
+    knowledge_store: Optional[KnowledgeStoreSettings] = None
+    web_interface: Optional[WebInterfaceSettings] = None
+    sandbox: Optional[SandboxSettings] = None
+    browser_config: Optional[BrowserSettings] = None
+    search_config: Optional[SearchSettings] = None
+    mcp_config: Optional[MCPSettings] = None
+    logging: Optional[LoggingSettings] = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -179,142 +204,189 @@ class Config:
         if not self._initialized:
             with self._lock:
                 if not self._initialized:
-                    self._config = None
+                    self._config_data = None # Store raw loaded data
+                    self._app_config: Optional[AppConfig] = None # Store parsed AppConfig
                     self._load_initial_config()
                     self._initialized = True
 
     @staticmethod
-    def _get_config_path() -> Path:
+    def _get_config_path_and_type() -> tuple[Optional[Path], Optional[str]]:
         root = PROJECT_ROOT
-        config_path = root / "config" / "config.toml"
-        if config_path.exists():
-            return config_path
-        example_path = root / "config" / "config.example.toml"
-        if example_path.exists():
-            return example_path
-        raise FileNotFoundError("No configuration file found in config directory")
+        config_dir = root / "config"
+        
+        # Priority: YAML, then TOML
+        yaml_path = config_dir / "config.yaml"
+        if yaml_path.exists():
+            return yaml_path, "yaml"
+        
+        example_yaml_path = config_dir / "config.example.yaml"
+        if example_yaml_path.exists():
+            return example_yaml_path, "yaml"
 
-    def _load_config(self) -> dict:
-        config_path = self._get_config_path()
-        with config_path.open("rb") as f:
-            return tomllib.load(f)
+        toml_path = config_dir / "config.toml"
+        if toml_path.exists():
+            return toml_path, "toml"
+        
+        example_toml_path = config_dir / "config.example.toml"
+        if example_toml_path.exists():
+            return example_toml_path, "toml"
+            
+        return None, None
+
+    def _load_config_data(self) -> dict:
+        config_path, config_type = self._get_config_path_and_type()
+        
+        if not config_path or not config_type:
+            raise FileNotFoundError("No configuration file (config.yaml, config.example.yaml, config.toml, or config.example.toml) found in config directory")
+
+        with config_path.open("r" if config_type == "yaml" else "rb") as f:
+            if config_type == "yaml":
+                try:
+                    return yaml.safe_load(f)
+                except yaml.YAMLError as e:
+                    raise ValueError(f"Error parsing YAML configuration file {config_path}: {e}")
+            elif config_type == "toml":
+                try:
+                    return tomllib.load(f)
+                except tomllib.TOMLDecodeError as e:
+                    raise ValueError(f"Error parsing TOML configuration file {config_path}: {e}")
+        return {}
 
     def _load_initial_config(self):
-        raw_config = self._load_config()
-        base_llm = raw_config.get("llm", {})
-        llm_overrides = {
-            k: v for k, v in raw_config.get("llm", {}).items() if isinstance(v, dict)
-        }
+        self._config_data = self._load_config_data()
+        raw_config = self._config_data
 
-        default_settings = {
-            "model": base_llm.get("model"),
-            "base_url": base_llm.get("base_url"),
-            "api_key": base_llm.get("api_key"),
-            "max_tokens": base_llm.get("max_tokens", 4096),
-            "max_input_tokens": base_llm.get("max_input_tokens"),
-            "temperature": base_llm.get("temperature", 1.0),
-            "api_type": base_llm.get("api_type", ""),
-            "api_version": base_llm.get("api_version", ""),
-        }
+        # LLM settings processing (remains similar, assumes dict structure from YAML/TOML)
+        base_llm_config = raw_config.get("llm", {}).get("default", {})
+        llm_overrides = {k: v for k, v in raw_config.get("llm", {}).items() if k != "default" and isinstance(v, dict)}
 
-        # handle browser config.
-        browser_config = raw_config.get("browser", {})
+        # Ensure default LLM settings are fully populated
+        default_llm_settings = LLMSettings(
+            model=base_llm_config.get("model", "default_model_not_set"),
+            base_url=base_llm_config.get("base_url", "default_base_url_not_set"),
+            api_key=base_llm_config.get("api_key", "default_api_key_not_set"),
+            max_tokens=base_llm_config.get("max_tokens", 4096),
+            max_input_tokens=base_llm_config.get("max_input_tokens"),
+            temperature=base_llm_config.get("temperature", 0.7),
+            api_type=base_llm_config.get("api_type", "openai"),
+            api_version=base_llm_config.get("api_version", "v1")
+        )
+
+        parsed_llm_configs = {"default": default_llm_settings}
+        for name, override_config_data in llm_overrides.items():
+            # Create LLMSettings instance for each override, falling back to defaults if keys are missing
+            parsed_llm_configs[name] = LLMSettings(
+                model=override_config_data.get("model", default_llm_settings.model),
+                base_url=override_config_data.get("base_url", default_llm_settings.base_url),
+                api_key=override_config_data.get("api_key", default_llm_settings.api_key),
+                max_tokens=override_config_data.get("max_tokens", default_llm_settings.max_tokens),
+                max_input_tokens=override_config_data.get("max_input_tokens", default_llm_settings.max_input_tokens),
+                temperature=override_config_data.get("temperature", default_llm_settings.temperature),
+                api_type=override_config_data.get("api_type", default_llm_settings.api_type),
+                api_version=override_config_data.get("api_version", default_llm_settings.api_version)
+            )
+
+        # Browser settings
+        browser_raw_config = raw_config.get("browser", {})
         browser_settings = None
-
-        if browser_config:
-            # handle proxy settings.
-            proxy_config = browser_config.get("proxy", {})
-            proxy_settings = None
-
-            if proxy_config and proxy_config.get("server"):
-                proxy_settings = ProxySettings(
-                    **{
-                        k: v
-                        for k, v in proxy_config.items()
-                        if k in ["server", "username", "password"] and v
-                    }
-                )
-
-            # filter valid browser config parameters.
-            valid_browser_params = {
-                k: v
-                for k, v in browser_config.items()
-                if k in BrowserSettings.__annotations__ and v is not None
-            }
-
-            # if there is proxy settings, add it to the parameters.
+        if browser_raw_config:
+            proxy_raw_config = browser_raw_config.get("proxy", {})
+            proxy_settings = ProxySettings(**proxy_raw_config) if proxy_raw_config.get("server") else None
+            browser_params = {k: v for k, v in browser_raw_config.items() if k != "proxy"}
             if proxy_settings:
-                valid_browser_params["proxy"] = proxy_settings
+                browser_params["proxy"] = proxy_settings
+            if browser_params: # only create if there are params
+                 browser_settings = BrowserSettings(**browser_params)
 
-            # only create BrowserSettings when there are valid parameters.
-            if valid_browser_params:
-                browser_settings = BrowserSettings(**valid_browser_params)
+        # Other settings, directly from YAML/TOML structure if keys match Pydantic models
+        search_settings = SearchSettings(**raw_config["search"]) if "search" in raw_config else None
+        sandbox_settings = SandboxSettings(**raw_config["sandbox"]) if "sandbox" in raw_config else SandboxSettings() # Default if not present
+        agent_settings = AgentSettings(**raw_config["agent"]) if "agent" in raw_config else None
+        supervision_settings = SupervisionSettings(**raw_config["supervision"]) if "supervision" in raw_config else None
+        knowledge_store_settings = KnowledgeStoreSettings(**raw_config["knowledge_store"]) if "knowledge_store" in raw_config else None
+        web_interface_settings = WebInterfaceSettings(**raw_config["web_interface"]) if "web_interface" in raw_config else None
+        logging_settings = LoggingSettings(**raw_config["logging"]) if "logging" in raw_config else None
 
-        search_config = raw_config.get("search", {})
-        search_settings = None
-        if search_config:
-            search_settings = SearchSettings(**search_config)
-        sandbox_config = raw_config.get("sandbox", {})
-        if sandbox_config:
-            sandbox_settings = SandboxSettings(**sandbox_config)
-        else:
-            sandbox_settings = SandboxSettings()
+        # MCP settings (loading from mcp.json remains)
+        mcp_raw_config = raw_config.get("mcp", {})
+        mcp_servers = MCPSettings.load_server_config() # This part is separate as per original logic
+        mcp_settings = MCPSettings(server_reference=mcp_raw_config.get("server_reference", "app.mcp.server"), servers=mcp_servers)
+        
+        self._app_config = AppConfig(
+            llm=parsed_llm_configs,
+            agent=agent_settings,
+            supervision=supervision_settings,
+            knowledge_store=knowledge_store_settings,
+            web_interface=web_interface_settings,
+            sandbox=sandbox_settings,
+            browser_config=browser_settings,
+            search_config=search_settings,
+            mcp_config=mcp_settings,
+            logging=logging_settings
+        )
 
-        mcp_config = raw_config.get("mcp", {})
-        mcp_settings = None
-        if mcp_config:
-            # Load server configurations from JSON
-            mcp_config["servers"] = MCPSettings.load_server_config()
-            mcp_settings = MCPSettings(**mcp_config)
-        else:
-            mcp_settings = MCPSettings(servers=MCPSettings.load_server_config())
-
-        config_dict = {
-            "llm": {
-                "default": default_settings,
-                **{
-                    name: {**default_settings, **override_config}
-                    for name, override_config in llm_overrides.items()
-                },
-            },
-            "sandbox": sandbox_settings,
-            "browser_config": browser_settings,
-            "search_config": search_settings,
-            "mcp_config": mcp_settings,
-        }
-
-        self._config = AppConfig(**config_dict)
-
+    # Property getters to access parsed AppConfig fields
     @property
     def llm(self) -> Dict[str, LLMSettings]:
-        return self._config.llm
+        return self._app_config.llm
+
+    @property
+    def agent(self) -> Optional[AgentSettings]:
+        return self._app_config.agent
+
+    @property
+    def supervision(self) -> Optional[SupervisionSettings]:
+        return self._app_config.supervision
+
+    @property
+    def knowledge_store(self) -> Optional[KnowledgeStoreSettings]:
+        return self._app_config.knowledge_store
+
+    @property
+    def web_interface(self) -> Optional[WebInterfaceSettings]:
+        return self._app_config.web_interface
 
     @property
     def sandbox(self) -> SandboxSettings:
-        return self._config.sandbox
+        return self._app_config.sandbox
 
     @property
     def browser_config(self) -> Optional[BrowserSettings]:
-        return self._config.browser_config
+        return self._app_config.browser_config
 
     @property
     def search_config(self) -> Optional[SearchSettings]:
-        return self._config.search_config
+        return self._app_config.search_config
 
     @property
     def mcp_config(self) -> MCPSettings:
-        """Get the MCP configuration"""
-        return self._config.mcp_config
+        return self._app_config.mcp_config
+    
+    @property
+    def logging(self) -> Optional[LoggingSettings]:
+        return self._app_config.logging
 
     @property
     def workspace_root(self) -> Path:
-        """Get the workspace root directory"""
         return WORKSPACE_ROOT
 
     @property
     def root_path(self) -> Path:
-        """Get the root path of the application"""
         return PROJECT_ROOT
 
+    # Method to get raw config if needed, e.g., for parts not fitting Pydantic models
+    def get_raw_config_value(self, key_path: str, default: Any = None) -> Any:
+        """Retrieves a value from the raw loaded config data using a dot-separated path."""
+        if not self._config_data:
+            return default
+        keys = key_path.split(".")
+        value = self._config_data
+        try:
+            for key in keys:
+                value = value[key]
+            return value
+        except (KeyError, TypeError):
+            return default
 
 config = Config()
+
