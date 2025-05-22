@@ -9,18 +9,19 @@ from app.clients import OllamaClient
 class OllamaLLM(LLM):
     """Custom LLM class for Ollama integration"""
     
-    def __init__(self, model_name="llama2"):
+    def __init__(self, model_name="deepseek-r1:14b"):
         super().__init__("ollama")
         # Override the model name if specified
         self.model = model_name
         # Create an Ollama client
         self.client = OllamaClient(
             api_key="",  # No API key needed for Ollama
-            base_url="http://localhost:11434"  # Default Ollama endpoint
+            base_url="http://localhost:11434",  # Default Ollama endpoint
+            model=model_name  # Set the model in the client
         )
         logger.info(f"Initialized Ollama client for model {self.model}")
 
-async def run_with_ollama(prompt, model_name="llama2"):
+async def run_with_ollama(prompt, model_name="deepseek-r1:14b"):
     """Run the Manus agent with Ollama LLM"""
     # Create a custom Ollama LLM instance
     llm = OllamaLLM(model_name)
@@ -47,7 +48,7 @@ async def run_with_ollama(prompt, model_name="llama2"):
 
 if __name__ == "__main__":
     # Get model name and prompt from command line arguments
-    model = sys.argv[1] if len(sys.argv) > 1 else "llama2"
+    model = sys.argv[1] if len(sys.argv) > 1 else "deepseek-r1:14b"
     prompt = sys.argv[2] if len(sys.argv) > 2 else "Tell me a joke about programming"
     
     # Run the agent with Ollama

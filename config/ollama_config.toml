@@ -1,10 +1,21 @@
 # OpenAgent configuration for Ollama
 
-[llm.ollama]
-model = "llama2"                      # Default model, you can change this to any model you have in Ollama
-base_url = "http://localhost:11434"   # Default Ollama API endpoint
-api_key = ""                          # Not needed for Ollama
-max_tokens = 4096                     # Maximum number of tokens in the response
-temperature = 0.7                     # Controls randomness
-api_type = "ollama"                   # Specify API type as ollama
-api_version = ""                      # Not needed for Ollama
+# Primary LLM Configuration (DeepSeek-R1)
+[llm.default]
+model = "deepseek-r1:14b"          # Using DeepSeek-R1 as main model
+base_url = "http://localhost:11434" # Default Ollama API endpoint
+# api_key not required for Ollama
+max_tokens = 4096                   # Maximum number of tokens in the response
+temperature = 0.1                   # Low temperature for more deterministic responses
+api_type = "ollama"                 # Specify API type as ollama
+# api_version not required for Ollama
+
+# Support Model Configuration (DeepSeek-R1)
+[llm.support]
+model = "deepseek-r1:14b"           # Using DeepSeek-R1 as support model
+base_url = "http://localhost:11434" # Default Ollama API endpoint
+# api_key not required for Ollama
+max_tokens = 2048                   # Maximum tokens for reasoning responses
+temperature = 0.2                   # Temperature for reasoning model
+api_type = "ollama"                 # Specify API type as ollama
+# api_version not required for Ollama
