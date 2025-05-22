@@ -1,8 +1,9 @@
 import json
+import os
 import threading
 import tomllib
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -198,6 +199,14 @@ class Config:
         config_path = self._get_config_path()
         with config_path.open("rb") as f:
             return tomllib.load(f)
+            
+    def _resolve_env_var(self, value: str) -> str:
+        """Resolve environment variable if the value is an environment variable name."""
+        if isinstance(value, str):
+            env_value = os.getenv(value)
+            if env_value is not None:
+                return env_value
+        return value
 
     def _load_initial_config(self):
         raw_config = self._load_config()
@@ -206,10 +215,11 @@ class Config:
             k: v for k, v in raw_config.get("llm", {}).items() if isinstance(v, dict)
         }
 
+        # Resolve environment variables in API keys and other values
         default_settings = {
             "model": base_llm.get("model"),
             "base_url": base_llm.get("base_url"),
-            "api_key": base_llm.get("api_key"),
+            "api_key": self._resolve_env_var(base_llm.get("api_key")),
             "max_tokens": base_llm.get("max_tokens", 4096),
             "max_input_tokens": base_llm.get("max_input_tokens"),
             "temperature": base_llm.get("temperature", 1.0),
@@ -269,12 +279,20 @@ class Config:
         else:
             mcp_settings = MCPSettings(servers=MCPSettings.load_server_config())
 
+        # Process override configurations and resolve their environment variables too
+        processed_overrides = {}
+        for name, override_config in llm_overrides.items():
+            # Ensure API keys are resolved from environment variables
+            if "api_key" in override_config:
+                override_config["api_key"] = self._resolve_env_var(override_config["api_key"])
+            processed_overrides[name] = override_config
+        
         config_dict = {
             "llm": {
                 "default": default_settings,
                 **{
                     name: {**default_settings, **override_config}
-                    for name, override_config in llm_overrides.items()
+                    for name, override_config in processed_overrides.items()
                 },
             },
             "sandbox": sandbox_settings,

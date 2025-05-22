@@ -1,4 +1,13 @@
 import asyncio
+import os
+from pathlib import Path
+
+# Initialize dotenv before other imports to ensure environment variables are available
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+dotenv_path = Path(__file__).resolve().parent / '.env'
+load_dotenv(dotenv_path if dotenv_path.exists() else None)
 
 from app.agent.manus import Manus
 from app.logger import logger

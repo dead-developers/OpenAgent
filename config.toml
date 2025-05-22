@@ -1,0 +1,8 @@
+[llm.default]
+model = "openrouter/anthropic/claude-3-haiku"
+base_url = "https://api.openrouter.ai/api/v1"
+api_key = "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"
+max_tokens = 4096
+temperature = 0.7
+api_type = "openrouter"
+api_version = ""

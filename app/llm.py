@@ -19,6 +19,7 @@ from tenacity import (
 )
 
 from app.bedrock import BedrockClient
+from app.clients import GoogleAIClient, HuggingFaceClient, OpenRouterClient
 from app.config import LLMSettings, config
 from app.exceptions import TokenLimitExceeded
 from app.logger import logger  # Assuming a logger is set up in your app
@@ -220,6 +221,7 @@ class LLM:
                 # If the model is not in tiktoken's presets, use cl100k_base as default
                 self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
+            # Initialize the appropriate client based on api_type
             if self.api_type == "azure":
                 self.client = AsyncAzureOpenAI(
                     base_url=self.base_url,
@@ -228,7 +230,27 @@ class LLM:
                 )
             elif self.api_type == "aws":
                 self.client = BedrockClient()
+            elif self.api_type == "huggingface":
+                logger.info(f"Initializing HuggingFace client for model {self.model}")
+                self.client = HuggingFaceClient(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                )
+            elif self.api_type == "openrouter":
+                logger.info(f"Initializing OpenRouter client for model {self.model}")
+                self.client = OpenRouterClient(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                )
+            elif self.api_type == "google":
+                logger.info(f"Initializing Google AI client for model {self.model}")
+                self.client = GoogleAIClient(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                )
             else:
+                # Default to OpenAI client for compatibility
+                logger.info(f"Initializing OpenAI client for model {self.model}")
                 self.client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
 
             self.token_counter = TokenCounter(self.tokenizer)
